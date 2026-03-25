@@ -1,0 +1,119 @@
+version: '3.9'
+
+services:
+
+  # ---- MySQL Database ----
+  db:
+    image: mysql:8.0
+    container_name: skybooker_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE:      skybooker_db
+      MYSQL_USER:          ${DB_USER:-skybooker}
+      MYSQL_PASSWORD:      ${DB_PASS:-skybooker_pass}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - skybooker_net
+
+  # ---- Node.js Backend ----
+  backend:
+    build:
+      context:    ./backend
+      dockerfile: Dockerfile
+      target:     production
+    container_name: skybooker_api
+    restart:  unless-stopped
+    depends_on:
+      db:             { condition: service_healthy }
+      payment-service: { condition: service_started }
+    environment:
+      NODE_ENV:              production
+      PORT:                  5000
+      DATABASE_URL:          mysql://${DB_USER:-skybooker}:${DB_PASS:-skybooker_pass}@db:3306/skybooker_db
+      JWT_SECRET:            ${JWT_SECRET}
+      JWT_EXPIRES_IN:        7d
+      PAYMENT_SERVICE_URL:   http://payment-service:7000
+      PAYMENT_SERVICE_API_KEY: ${PAYMENT_SERVICE_API_KEY}
+      SMTP_HOST:             ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT:             ${SMTP_PORT:-587}
+      SMTP_USER:             ${SMTP_USER}
+      SMTP_PASS:             ${SMTP_PASS}
+      EMAIL_FROM_NAME:       SkyBooker
+      EMAIL_FROM_ADDRESS:    ${EMAIL_FROM_ADDRESS:-noreply@skybooker.com}
+      APP_URL:               ${APP_URL:-http://localhost}
+      CORS_ORIGIN:           ${CORS_ORIGIN:-http://localhost}
+      TICKET_SERVICE_URL:    http://ticket-service:8080
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "5000:5000"
+    networks:
+      - skybooker_net
+
+  # ---- .NET Payment Microservice ----
+  payment-service:
+    build:
+      context:    ./payment-service
+      dockerfile: Dockerfile
+    container_name: skybooker_payment
+    restart:  unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT:                        Production
+      ASPNETCORE_URLS:                               http://+:7000
+      ConnectionStrings__DefaultConnection:          Server=db;Port=3306;Database=skybooker_db;User=${DB_USER:-skybooker};Password=${DB_PASS:-skybooker_pass};
+      Razorpay__KeyId:                               ${RAZORPAY_KEY_ID}
+      Razorpay__KeySecret:                           ${RAZORPAY_KEY_SECRET}
+      Razorpay__WebhookSecret:                       ${RAZORPAY_WEBHOOK_SECRET}
+      InternalApiKey:                                ${PAYMENT_SERVICE_API_KEY}
+      NodeApiUrl:                                    http://backend:5000
+    ports:
+      - "7000:7000"
+    networks:
+      - skybooker_net
+
+  # ---- React Frontend (Nginx) ----
+  frontend:
+    build:
+      context:    ./frontend
+      dockerfile: Dockerfile
+    container_name: skybooker_web
+    restart:  unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - skybooker_net
+
+  # ---- Java Ticket Microservice ----
+  ticket-service:
+    build:
+      context:    ./ticket-service
+      dockerfile: Dockerfile
+    container_name: skybooker_ticket
+    restart:  unless-stopped
+    ports:
+      - "8081:8080"
+    networks:
+      - skybooker_net
+
+volumes:
+  db_data:
+  uploads_data:
+
+networks:
+  skybooker_net:
+    driver: bridge

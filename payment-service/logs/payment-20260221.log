@@ -1,0 +1,3 @@
+2026-02-21 17:13:54.101 +05:30 [INF] 🚀 SkyBooker Payment Service starting on http://localhost:7000
+2026-02-21 18:53:20.381 +05:30 [INF] HTTP GET / responded 401 in 30.6615 ms
+2026-02-21 18:53:20.416 +05:30 [INF] HTTP GET /favicon.ico responded 401 in 0.5784 ms
