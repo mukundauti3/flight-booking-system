@@ -99,7 +99,7 @@
 ## Project Structure
 
 ```
-Vipul_Cdac_Project/
+Mukund_Auti_Project/
 ├── backend/                    # Node.js API
 │   ├── config/db.js            # MySQL connection pool
 │   ├── middleware/             # auth.js, errorHandler.js, validate.js, upload.js
